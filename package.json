@@ -5,25 +5,29 @@
   "type": "module",
   "scripts": {
     "start:dev": "nodemon -e ts,json --exec 'tsx ./src/index.ts | pino-pretty -c'",
-    "predata:seed": "mkdir -p data && sqlite3 data/users.db < src/database/schema.sql",
-    "data:seed": "tsx ./src/seed.ts",
-    "data:clean": "rimraf ./data"
+    "datasources:setup": "tsx ./scripts/datasources/setup.ts",
+    "datasources:seed": "npm run datasources:setup && tsx ./scripts/datasources/seed.ts",
+    "datasources:reset": "tsx ./scripts/datasources/reset.ts"
   },
   "dependencies": {
     "@apollo/server": "4.10.2",
+    "avsc": "5.7.7",
     "better-sqlite3": "9.4.3",
+    "dataloader": "^2.2.2",
+    "fastify": "4.26.2",
     "graphql": "16.8.1",
-    "knex": "3.1.0",
     "pino": "8.19.0"
   },
   "devDependencies": {
     "@faker-js/faker": "^8.4.1",
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/lodash": "^4.17.0",
     "@types/node": "^20.11.30",
     "fishery": "^2.2.2",
     "listr2": "^8.0.2",
+    "lodash": "^4.17.21",
     "nodemon": "^3.1.0",
     "pino-pretty": "^11.0.0",
-    "rimraf": "^5.0.5",
     "tsx": "^4.7.1"
   }
 }
