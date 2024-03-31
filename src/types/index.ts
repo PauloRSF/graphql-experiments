@@ -7,7 +7,7 @@ export type Post = {
   id: number;
   title: string;
   authorId: Author["id"];
-  author: AuthorWithoutPosts;
+  author: Author;
   tagIds: Array<Tag["id"]>;
   tags: Tag[];
 };
@@ -20,4 +20,4 @@ export type Author = {
   posts: Post[];
 };
 
-export type AuthorWithoutPosts = Omit<Author, "posts">;
+export type AuthorWithUnresolvedRelations = Omit<Author, "posts">;

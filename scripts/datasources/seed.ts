@@ -1,71 +1,109 @@
-import { Listr } from "listr2";
 import _ from "lodash";
+import { Listr } from "listr2";
+import promiseRetry from "promise-retry";
 
 import { type Author } from "../../src/types/index.js";
-import { authorFactory } from "../../src/factories/author.js";
-import { sqlClient } from "../../src/datasources/sql/client.js";
-import { httpDatasource } from "../../src/datasources/http/index.js";
-import { fsDatasource } from "../../src/datasources/fs/index.js";
-import { fsClient } from "../../src/datasources/fs/client.js";
+import { AuthorFactory } from "../../src/factories/author.js";
+import { makeAuthorsSqlClient } from "../../src/datasources/authors/sql.js";
+import { makePostsJsonClient } from "../../src/datasources/posts/json.js";
+import { makePostsHttpClient } from "../../src/datasources/posts/http.js";
+import { makeTagsAvroClient } from "../../src/datasources/tags/avro.js";
+import { logger } from "../../src/logger/index.js";
+
+const TagsAvroClient = makeTagsAvroClient({
+  tagsAvroPath: process.env.TAGS_FILE_PATH!,
+  logger,
+});
+
+const PostsJsonClient = makePostsJsonClient({
+  postsJsonPath: process.env.POSTS_FILE_PATH!,
+});
+
+const PostsHttpClient = makePostsHttpClient({
+  postsHttpUrl: process.env.POSTS_HTTP_URL!,
+  logger,
+});
+
+const AuthorsSqlClient = makeAuthorsSqlClient({
+  authorsSqlPath: process.env.AUTHORS_FILE_PATH!,
+  logger,
+});
 
 type SeedTasksContext = {
   authors: Author[];
 };
 
-const tasks = new Listr<SeedTasksContext>(
-  [
-    {
-      title: "Seed the 'posts' data source",
-      task: async ({ authors }) => {
-        await httpDatasource.start();
+const tasks = new Listr<SeedTasksContext>([
+  {
+    title: "Setup the datasources",
+    task: async (_, task) =>
+      task.newListr(
+        [
+          {
+            title: "Setup the 'posts' data source",
+            task: () => PostsJsonClient.setup(),
+          },
+          {
+            title: "Setup the 'authors' data source",
+            task: () => AuthorsSqlClient.setup(),
+          },
+          {
+            title: "Setup the 'tags' data source",
+            task: () => TagsAvroClient.setup(),
+          },
+        ],
+        { concurrent: true }
+      ),
+  },
+  {
+    title: "Wait for HTTP server to be healthy",
+    task: () =>
+      promiseRetry((retry) => PostsHttpClient.getPosts().catch(retry)),
+  },
+  {
+    title: "Seed the datasources",
+    task: async (_, task) =>
+      task.newListr(
+        [
+          {
+            title: "Seed the 'posts' data source",
+            task: async ({ authors }) => {
+              const posts = authors
+                .flatMap(({ posts }) => posts)
+                .map(({ tags, author, ...post }) => ({
+                  ...post,
+                  authorId: author.id,
+                  tagIds: tags.map(({ id }) => id),
+                }));
 
-        const posts = authors
-          .flatMap(({ posts }) => posts)
-          .map(({ tags, author, ...post }) => ({
-            ...post,
-            author_id: author.id,
-            tag_ids: tags.map(({ id }) => id),
-          }));
+              return Promise.all(
+                posts.map((post) => PostsHttpClient.savePost(post))
+              );
+            },
+          },
+          {
+            title: "Seed the 'authors' data source",
+            task: async ({ authors }) =>
+              Promise.all(
+                authors.map((author) => AuthorsSqlClient.saveAuthor(author))
+              ),
+          },
+          {
+            title: "Seed the 'tags' data source",
+            task: async ({ authors }) => {
+              const tags = authors.flatMap(({ posts }) =>
+                posts.flatMap(({ tags }) => tags)
+              );
 
-        const postsCreationPromises = posts.map((post) =>
-          fetch("http://localhost:3000/posts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(post),
-          })
-        );
+              return Promise.all(
+                tags.map((tag) => TagsAvroClient.saveTag(tag))
+              );
+            },
+          },
+        ],
+        { concurrent: true }
+      ),
+  },
+]);
 
-        await Promise.all(postsCreationPromises).then((res) =>
-          res.forEach((r) => r.text().then((x) => console.log(x)))
-        );
-
-        httpDatasource.shutdown();
-      },
-    },
-    {
-      title: "Seed the 'authors' data source",
-      task: async ({ authors }) => {
-        authors
-          .map(({ id, name }) => ({ id, name }))
-          .forEach((values) => sqlClient.createAuthor(values));
-      },
-    },
-    {
-      title: "Seed the 'tags' data source",
-      task: async ({ authors }) => {
-        const posts = authors.flatMap(({ posts }) => posts);
-        const tags = posts.flatMap(({ tags }) => tags);
-        const uniqueTags = _.uniqBy(tags, "id");
-
-        fsDatasource.setup();
-
-        for (const tag of uniqueTags) {
-          await fsClient.createTag(tag);
-        }
-      },
-    },
-  ],
-  { concurrent: true }
-);
-
-await tasks.run({ authors: authorFactory.buildList(6) });
+await tasks.run({ authors: AuthorFactory.buildList(6) });

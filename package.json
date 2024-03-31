@@ -4,18 +4,22 @@
   "private": "true",
   "type": "module",
   "scripts": {
-    "start:dev": "nodemon -e ts,json --exec 'tsx ./src/index.ts | pino-pretty -c'",
-    "datasources:setup": "tsx ./scripts/datasources/setup.ts",
-    "datasources:seed": "npm run datasources:setup && tsx ./scripts/datasources/seed.ts",
-    "datasources:reset": "tsx ./scripts/datasources/reset.ts"
+    "start:http": "touch $POSTS_FILE_PATH && json-server --port 3004 $POSTS_FILE_PATH > /dev/null",
+    "start:app": "tsx ./src/index.ts | pino-pretty -c",
+    "start": "concurrently --raw 'npm run start:http' 'npm run start:app'",
+    "start:watch": "nodemon -e ts,json --exec 'npm run start'",
+    "datasources:seed": "concurrently --raw --kill-others 'npm run start:http' 'tsx ./scripts/datasources/seed.ts'"
   },
   "dependencies": {
     "@apollo/server": "4.10.2",
     "avsc": "5.7.7",
+    "awilix": "10.0.1",
     "better-sqlite3": "9.4.3",
-    "dataloader": "^2.2.2",
+    "dataloader": "2.2.2",
+    "dotenv": "16.4.5",
     "fastify": "4.26.2",
     "graphql": "16.8.1",
+    "json-server": "0.17.4",
     "pino": "8.19.0"
   },
   "devDependencies": {
@@ -23,11 +27,14 @@
     "@types/better-sqlite3": "^7.6.9",
     "@types/lodash": "^4.17.0",
     "@types/node": "^20.11.30",
+    "@types/promise-retry": "^1.1.6",
+    "concurrently": "^8.2.2",
     "fishery": "^2.2.2",
     "listr2": "^8.0.2",
     "lodash": "^4.17.21",
     "nodemon": "^3.1.0",
     "pino-pretty": "^11.0.0",
+    "promise-retry": "^2.0.1",
     "tsx": "^4.7.1"
   }
 }

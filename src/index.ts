@@ -1,5 +1,7 @@
-import { httpServer } from "./datasources/http/server.js";
-import { graphql } from "./graphql/index.js";
+import { config as loadEnvironment } from "dotenv";
 
-await httpServer.start();
-await graphql.start();
+import { container } from "./container/index.js";
+
+loadEnvironment();
+
+await container.graphqlServer.start();
